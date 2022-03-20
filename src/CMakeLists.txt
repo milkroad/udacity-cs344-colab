@@ -20,8 +20,7 @@ if(CUDA_FOUND)
   # whether to build x64.  We tell it to support most devices, though, 
   # to make sure more people can easily run class code without knowing 
   # about this compiler argument
-  set(CUDA_NVCC_FLAGS "
-  -gencode;arch=compute_30,code=sm_30;  
+  set(CUDA_NVCC_FLAGS "  
   -gencode;arch=compute_35,code=sm_35;
   -gencode;arch=compute_35,code=compute_35;")
 
