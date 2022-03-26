@@ -109,7 +109,42 @@ void gaussian_blur(const unsigned char* const inputChannel,
                    const float* const filter, const int filterWidth)
 {
   // TODO
-  
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+  if(x < numCols && y < numRows){
+    int pid = y * numCols + x;
+    float w_sum(0.0);
+    for (int j = 0; j < filterWidth; ++j){ // filter row
+        for (int i = 0; i < filterWidth; ++i){ // filter col
+            int fb_offset = (filterWidth - 1) / 2; // offset from the center to the boudary of the filter
+            int x_np = x + (i - fb_offset);
+            int y_np = y + (j - fb_offset);
+
+            //clamp the values for neighbors that outside the imgae:
+            if (x_np<0)
+              x_np = 0;
+            if (x_np >= numCols)
+              x_np = numCols - 1;
+            if (y_np<0)
+              y_np = 0;
+            if (y_np >= numRows)
+              y_np = numRows - 1;
+            
+            w_sum += inputChannel[y_np*numCols+x_np] * filter[i*filterWidth+j];
+
+            //if(pid==47895) {
+            //  printf("[%d %d] * [%d %d]\n", x_np, y_np, i, j);
+            //}
+        }  
+    }
+    
+    __syncthreads();
+    outputChannel[pid] = w_sum;
+
+      
+  }
+
   // NOTE: Be sure to compute any intermediate results in floating point
   // before storing the final result as unsigned char.
 
@@ -122,7 +157,7 @@ void gaussian_blur(const unsigned char* const inputChannel,
   // {
   //     return;
   // }
-  
+
   // NOTE: If a thread's absolute position 2D position is within the image, but some of
   // its neighbors are outside the image, then you will need to be extra careful. Instead
   // of trying to read such a neighbor value from GPU memory (which won't work because
@@ -142,6 +177,15 @@ void separateChannels(const uchar4* const inputImageRGBA,
                       unsigned char* const blueChannel)
 {
   // TODO
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+  if(x < numCols && y < numRows){
+      int pid = y * numCols + x;
+      redChannel[pid] = inputImageRGBA[pid].x;
+      greenChannel[pid] = inputImageRGBA[pid].y;
+      blueChannel[pid] = inputImageRGBA[pid].z;
+  }
   //
   // NOTE: Be careful not to try to access memory that is outside the bounds of
   // the image. You'll want code that performs the following check before accessing
@@ -199,6 +243,8 @@ void allocateMemoryAndCopyToGPU(const size_t numRowsImage, const size_t numColsI
   checkCudaErrors(cudaMalloc(&d_blue,  sizeof(unsigned char) * numRowsImage * numColsImage));
 
   //TODO:
+  size_t filtersize = sizeof(float) * filterWidth * filterWidth;
+  checkCudaErrors(cudaMalloc(&d_filter, filtersize));
   //Allocate memory for the filter on the GPU
   //Use the pointer d_filter that we have already declared for you
   //You need to allocate memory for the filter with cudaMalloc
@@ -207,6 +253,7 @@ void allocateMemoryAndCopyToGPU(const size_t numRowsImage, const size_t numColsI
   //IMPORTANT: Notice that we pass a pointer to a pointer to cudaMalloc
 
   //TODO:
+  checkCudaErrors(cudaMemcpy(d_filter, h_filter, filtersize, cudaMemcpyHostToDevice));
   //Copy the filter on the host (h_filter) to the memory you just allocated
   //on the GPU.  cudaMemcpy(dst, src, numBytes, cudaMemcpyHostToDevice);
   //Remember to use checkCudaErrors!
@@ -215,26 +262,46 @@ void allocateMemoryAndCopyToGPU(const size_t numRowsImage, const size_t numColsI
 
 void your_gaussian_blur(const uchar4 * const h_inputImageRGBA, uchar4 * const d_inputImageRGBA,
                         uchar4* const d_outputImageRGBA, const size_t numRows, const size_t numCols,
-                        unsigned char *d_redBlurred, 
-                        unsigned char *d_greenBlurred, 
+                        unsigned char *d_redBlurred,
+                        unsigned char *d_greenBlurred,
                         unsigned char *d_blueBlurred,
                         const int filterWidth)
 {
   //TODO: Set reasonable block size (i.e., number of threads per block)
-  const dim3 blockSize;
+  const dim3 blockSize(32, 32, 1);
 
   //TODO:
   //Compute correct grid size (i.e., number of blocks per kernel launch)
   //from the image size and and block size.
-  const dim3 gridSize;
+  int grid_x = ceil(numCols/32.0);
+  int grid_y = ceil(numRows/32.0);
+  const dim3 gridSize(grid_x, grid_y, 1);
 
   //TODO: Launch a kernel for separating the RGBA image into different color channels
+  separateChannels<<<gridSize, blockSize>>>(d_inputImageRGBA, 
+                                            numRows, numCols,
+                                            d_red,
+                                            d_green,
+                                            d_blue);
 
   // Call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after
   // launching your kernel to make sure that you didn't make any mistakes.
   cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 
   //TODO: Call your convolution kernel here 3 times, once for each color channel.
+  gaussian_blur<<<gridSize, blockSize>>>(d_red,
+                                         d_redBlurred,
+                                         numRows, numCols,
+                                         d_filter, filterWidth);
+  gaussian_blur<<<gridSize, blockSize>>>(d_green,
+                                         d_greenBlurred,
+                                         numRows, numCols,
+                                         d_filter, filterWidth);
+  gaussian_blur<<<gridSize, blockSize>>>(d_blue,
+                                         d_blueBlurred,
+                                         numRows, numCols,
+                                         d_filter, filterWidth);
+ 
 
   // Again, call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after
   // launching your kernel to make sure that you didn't make any mistakes.
@@ -261,4 +328,5 @@ void cleanup() {
   checkCudaErrors(cudaFree(d_red));
   checkCudaErrors(cudaFree(d_green));
   checkCudaErrors(cudaFree(d_blue));
+  checkCudaErrors(cudaFree(d_filter));
 }
