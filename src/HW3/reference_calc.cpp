@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cassert>
+#include "utils.h"
 
 void referenceCalculation(const float* const h_logLuminance, unsigned int* const h_cdf,
                           const size_t numRows, const size_t numCols, const size_t numBins, 
@@ -15,6 +16,7 @@ void referenceCalculation(const float* const h_logLuminance, unsigned int* const
     logLumMax = std::max(h_logLuminance[i], logLumMax);
   }
 
+  printf("REF: min: %f\tmax: %f\n", logLumMin, logLumMax);
   //Step 2
   float logLumRange = logLumMax - logLumMin;
 
@@ -31,6 +33,15 @@ void referenceCalculation(const float* const h_logLuminance, unsigned int* const
     histo[bin]++;
   }
 
+  printf("REF: ");
+  for (size_t i = 0; i < numBins; ++i) {
+    printf("%d ", histo[i]);
+    if ((i%30)==1) {
+       printf("\n");
+    }
+  }
+  printf("\n");
+
   //Step 4
   //finally we perform and exclusive scan (prefix sum)
   //on the histogram to get the cumulative distribution
@@ -38,6 +49,14 @@ void referenceCalculation(const float* const h_logLuminance, unsigned int* const
   for (size_t i = 1; i < numBins; ++i) {
     h_cdf[i] = h_cdf[i - 1] + histo[i - 1];
   }
+  printf("REF: ");
+  for (size_t i = 0; i < numBins; ++i) {
+    printf("%d ", h_cdf[i]);
+    if ((i%30)==1) {
+       printf("\n");
+    }
+  }
+  printf("\n");
 
   delete[] histo;
 }
